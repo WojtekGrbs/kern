@@ -96,6 +96,21 @@ static void self_kde_gaussian(const double * restrict data, double * restrict ou
     }
 }
 
+static void self_kde_beta(const double * restrict data, double * restrict out,
+                          int n, double h) {
+    double inv_nm1 = 1.0 / (n - 1);
+
+    #pragma omp parallel for schedule(dynamic, 32)
+    for (int i = 0; i < n; i++) {
+        double xi  = data[i];
+        double sum = 0.0;
+        for (int j = 0; j < n; j++) {
+            if (j == i) continue;
+            sum += kernel_beta(xi, data[j], h);
+        }
+        out[i] = sum * inv_nm1;
+    }
+}
 
 typedef double (*kernel1d_fn)(double);
 
@@ -131,7 +146,6 @@ static void ext_kde_gaussian(const double * restrict data, int n,
         double xi = xs[i];
         double sum = 0.0;
 
-        /* OpenMP SIMD replaces the handwritten AVX2 intrinsic loop. */
         #pragma omp simd reduction(+:sum)
         for (int j = 0; j < n; j++) {
             double u = (xi - data[j]) * inv_h;
@@ -139,6 +153,23 @@ static void ext_kde_gaussian(const double * restrict data, int n,
         }
 
         out[i] = sum * inv_nh;
+    }
+}
+
+static void ext_kde_beta(const double * restrict data, int n,
+                         const double * restrict xs, double * restrict out,
+                         int m, double h) {
+    double inv_n = 1.0 / n;
+
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < m; i++) {
+        double xi  = xs[i];
+        double sum = 0.0;
+        #pragma omp simd reduction(+:sum)
+        for (int j = 0; j < n; j++) {
+            sum += kernel_beta(xi, data[j], h);
+        }
+        out[i] = sum * inv_n;
     }
 }
 
@@ -161,6 +192,48 @@ static void _ext_kde(const double * restrict data, int n,
     }
 }
 
+static void self_kde_reflected(const double * restrict data, double * restrict out,
+                                int n, double h, kernel1d_fn kfn) {
+    double inv_nh  = 1.0 / ((n - 1) * h);
+    double inv_h   = 1.0 / h;
+
+    #pragma omp parallel for schedule(dynamic, 64)
+    for (int i = 0; i < n; i++) {
+        double xi  = data[i];
+        double sum = 0.0;
+        for (int j = 0; j < n; j++) {
+            if (j == i) continue;
+            double xj = data[j];
+            sum += kfn((xi - xj)  * inv_h);
+            sum += kfn((xi + xj)  * inv_h);
+            sum += kfn((xi - (2.0 - xj)) * inv_h);
+        }
+        out[i] = sum * inv_nh;
+    }
+}
+
+// Boundary-reflect KDE, all points contribute.
+static void ext_kde_reflected(const double * restrict data, int n,
+                               const double * restrict xs, double * restrict out,
+                               int m, double h, kernel1d_fn kfn) {
+    double inv_nh = 1.0 / (n * h);
+    double inv_h  = 1.0 / h;
+
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < m; i++) {
+        double xi  = xs[i];
+        double sum = 0.0;
+        #pragma omp simd reduction(+:sum)
+        for (int j = 0; j < n; j++) {
+            double xj = data[j];
+            sum += kfn((xi - xj)  * inv_h);
+            sum += kfn((xi + xj)  * inv_h);
+            sum += kfn((xi - (2.0 - xj)) * inv_h);
+        }
+        out[i] = sum * inv_nh;
+    }
+}
+
 
 static kernel1d_fn get_kernel_fn(const char *name) {
     if (strcmp(name, "gaussian")     == 0) return kernel_gaussian;
@@ -170,6 +243,18 @@ static kernel1d_fn get_kernel_fn(const char *name) {
     if (strcmp(name, "cosine")       == 0) return kernel_cosine;
     return NULL;
 }
+
+
+//
+//
+
+// Python
+
+
+
+//
+//
+
 
 static PyObject *py_kde_infinite_self(PyObject *self, PyObject *args) {
     PyArrayObject *data_arr;
@@ -242,6 +327,97 @@ static PyObject *py_kde_infinite_ext(PyObject *self, PyObject *args) {
     return (PyObject *)out_arr;
 }
 
+static PyObject *py_kde_beta_self(PyObject *self, PyObject *args) {
+    PyArrayObject *data_arr;
+    double h;
+
+    if (!PyArg_ParseTuple(args, "O!d", &PyArray_Type, &data_arr, &h))
+        return NULL;
+
+    int n = (int)PyArray_SIZE(data_arr);
+    double *data = (double *)PyArray_DATA(data_arr);
+
+    npy_intp dims[1] = {n};
+    PyArrayObject *out_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    if (!out_arr) return NULL;
+
+    self_kde_beta(data, (double *)PyArray_DATA(out_arr), n, h);
+    return (PyObject *)out_arr;
+}
+
+static PyObject *py_kde_beta_ext(PyObject *self, PyObject *args) {
+    PyArrayObject *data_arr, *xs_arr;
+    double h;
+
+    if (!PyArg_ParseTuple(args, "O!O!d", &PyArray_Type, &data_arr,
+                           &PyArray_Type, &xs_arr, &h))
+        return NULL;
+
+    int n = (int)PyArray_SIZE(data_arr);
+    int m = (int)PyArray_SIZE(xs_arr);
+
+    npy_intp dims[1] = {m};
+    PyArrayObject *out_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    if (!out_arr) return NULL;
+
+    ext_kde_beta((double *)PyArray_DATA(data_arr), n,
+                 (double *)PyArray_DATA(xs_arr),
+                 (double *)PyArray_DATA(out_arr), m, h);
+    return (PyObject *)out_arr;
+}
+
+static PyObject *py_kde_reflected_self(PyObject *self, PyObject *args) {
+    PyArrayObject *data_arr;
+    double h;
+    const char *kernel_name;
+
+    if (!PyArg_ParseTuple(args, "O!ds", &PyArray_Type, &data_arr, &h, &kernel_name))
+        return NULL;
+
+    kernel1d_fn kfn = get_kernel_fn(kernel_name);
+    if (!kfn) {
+        PyErr_SetString(PyExc_ValueError, "Unknown kernel name");
+        return NULL;
+    }
+
+    int n = (int)PyArray_SIZE(data_arr);
+    npy_intp dims[1] = {n};
+    PyArrayObject *out_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    if (!out_arr) return NULL;
+
+    self_kde_reflected((double *)PyArray_DATA(data_arr),
+                       (double *)PyArray_DATA(out_arr), n, h, kfn);
+    return (PyObject *)out_arr;
+}
+
+static PyObject *py_kde_reflected_ext(PyObject *self, PyObject *args) {
+    PyArrayObject *data_arr, *xs_arr;
+    double h;
+    const char *kernel_name;
+
+    if (!PyArg_ParseTuple(args, "O!O!ds", &PyArray_Type, &data_arr,
+                           &PyArray_Type, &xs_arr, &h, &kernel_name))
+        return NULL;
+
+    kernel1d_fn kfn = get_kernel_fn(kernel_name);
+    if (!kfn) {
+        PyErr_SetString(PyExc_ValueError, "Unknown kernel name");
+        return NULL;
+    }
+
+    int n = (int)PyArray_SIZE(data_arr);
+    int m = (int)PyArray_SIZE(xs_arr);
+    npy_intp dims[1] = {m};
+    PyArrayObject *out_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    if (!out_arr) return NULL;
+
+    ext_kde_reflected((double *)PyArray_DATA(data_arr), n,
+                      (double *)PyArray_DATA(xs_arr),
+                      (double *)PyArray_DATA(out_arr), m, h, kfn);
+    return (PyObject *)out_arr;
+}
+
+
 static PyMethodDef KernMethods[] = {
 
     // infinite - support kernels
@@ -250,8 +426,18 @@ static PyMethodDef KernMethods[] = {
     {"kde",      py_kde_infinite_ext,      METH_VARARGS,
      "External KDE with infinite-support kernel. Args: data, xs, h, kernel_name."},
     
-    // [0,1] - support kernels (and methods)
+    //[0,1]-support Beta kernel 
+    {"kde_beta_self",         py_kde_beta_self,         METH_VARARGS,
+     "Self-KDE with Beta kernel (native [0,1] support). Args: data, h."},
+    {"kde_beta_ext",          py_kde_beta_ext,          METH_VARARGS,
+     "External KDE with Beta kernel. Args: data, xs, h."},
 
+    // Boundary-reflected 
+    {"kde_reflected_self",    py_kde_reflected_self,    METH_VARARGS,
+     "Self-KDE with boundary reflection for [0,1]. Args: data, h, kernel_name."},
+    {"kde_reflected_ext",     py_kde_reflected_ext,     METH_VARARGS,
+     "External KDE with boundary reflection. Args: data, xs, h, kernel_name."},
+    
     // Bandwidth optimization
 
     // optimization? precision performance tradeoff? torch?
