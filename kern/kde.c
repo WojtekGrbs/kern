@@ -263,7 +263,7 @@ static struct PyModuleDef kern_module = {
     PyModuleDef_HEAD_INIT, "_core", NULL, -1, KernMethods
 };
 
-PyMODINIT_FUNC PyInit__fastkde(void) {
+PyMODINIT_FUNC PyInit__core(void) {
     import_array();
     return PyModule_Create(&kern_module);
 }
