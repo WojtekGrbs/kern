@@ -24,7 +24,7 @@ def openmp_flags(platform):
         return ["/openmp"], []
     if platform == "darwin":
         prefix = libomp_prefix()
-        compile_args = ["-Xpreprocessor", "-fopenmp", "-ffast-math"]
+        compile_args = ["-Xpreprocessor", "-fopenmp"]
         link_args = ["-lomp"]
         if prefix:
             compile_args.append(f"-I{os.path.join(prefix, 'include')}")
@@ -60,7 +60,14 @@ class BuildExt(build_ext):
 
     def build_extensions(self):
         use_openmp = os.environ.get("KERN_DISABLE_OPENMP") != "1"
-        compile_args = ["/O2"] if self.compiler.compiler_type == "msvc" else ["-O3"]
+        if self.compiler.compiler_type == "msvc":
+            compile_args = ["/O2"]
+        else:
+            compile_args = ["-O3", "-ffast-math", "-fno-math-errno"]
+            if sys.platform == "darwin":
+                compile_args += ["-mcpu=native", "-fveclib=Accelerate"]
+            else:
+                compile_args.append("-march=native")
         link_args = []
 
         if use_openmp:
@@ -86,7 +93,6 @@ class BuildExt(build_ext):
 ext = Extension(
     "kern._core",
     sources=["kern/kde.c",
-             "kern/kernels.c",
              "kern/kernel.c"],
     include_dirs=["kern", numpy.get_include()],
 )
