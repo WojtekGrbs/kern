@@ -244,6 +244,82 @@ static kernel1d_fn get_kernel_fn(const char *name) {
     return NULL;
 }
 
+static double loo_score(const double * restrict data, int n, double h, int metric) {
+    double *loo_dens = (double *)malloc(n * sizeof(double));
+    if (!loo_dens) return -DBL_MAX;
+    self_kde_gaussian(data, loo_dens, n, h);
+
+    double score = 0.0;
+    if (metric == 0) {
+        for (int i = 0; i < n; i++) {
+            double d = loo_dens[i];
+            score += (d > 1e-300) ? log(d) : -700.0;
+        }
+        score /= n;
+    } else {
+        double cross = 0.0;
+        for (int i = 0; i < n; i++) cross += loo_dens[i];
+        cross /= n;
+        score = cross;
+    }
+    free(loo_dens);
+    return score;
+}
+
+static double kfold_score(const double * restrict data, int n,
+                          int k_folds, double h, int metric) {
+
+    int *idx = (int *)malloc(n * sizeof(int));
+    double *fold_data = (double *)malloc(n * sizeof(double));
+    double *out       = (double *)malloc(n * sizeof(double));
+    if (!idx || !fold_data || !out) {
+        free(idx); free(fold_data); free(out);
+        return -DBL_MAX;
+    }
+    for (int i = 0; i < n; i++) idx[i] = i;
+    double total_score = 0.0;
+    int total_count = 0;
+
+    for (int f = 0; f < k_folds; f++) {
+
+        int test_start = (f * n) / k_folds;
+        int test_end   = ((f + 1) * n) / k_folds;
+        int n_test  = test_end - test_start;
+        int n_train = n - n_test;
+
+        double *train = (double *)malloc(n_train * sizeof(double));
+        double *test  = (double *)malloc(n_test  * sizeof(double));
+        double *pout  = (double *)malloc(n_test  * sizeof(double));
+        if (!train || !test || !pout) {
+            free(train); free(test); free(pout);
+            break;
+        }
+
+        int ti = 0, ri = 0;
+        for (int i = 0; i < n; i++) {
+            if (i >= test_start && i < test_end) test[ti++]  = data[i];
+            else train[ri++] = data[i];
+        }
+
+        ext_kde_gaussian(train, n_train, test, pout, n_test, h);
+
+        if (metric == 0) {
+            for (int i = 0; i < n_test; i++) {
+                double d = pout[i];
+                total_score += (d > 1e-300) ? log(d) : -700.0;
+            }
+        } else {
+            for (int i = 0; i < n_test; i++) total_score += pout[i];
+        }
+        total_count += n_test;
+
+        free(train); free(test); free(pout);
+    }
+
+    free(idx); free(fold_data); free(out);
+    return (total_count > 0) ? total_score / total_count : -DBL_MAX;
+}
+
 
 //
 //
@@ -417,6 +493,56 @@ static PyObject *py_kde_reflected_ext(PyObject *self, PyObject *args) {
     return (PyObject *)out_arr;
 }
 
+static PyObject *py_bandwidth_loo(PyObject *self, PyObject *args) {
+    PyArrayObject *data_arr, *h_arr;
+    const char *metric;
+
+    if (!PyArg_ParseTuple(args, "O!O!s", &PyArray_Type, &data_arr,
+                           &PyArray_Type, &h_arr, &metric))
+        return NULL;
+
+    int n    = (int)PyArray_SIZE(data_arr);
+    int nh   = (int)PyArray_SIZE(h_arr);
+    double *data  = (double *)PyArray_DATA(data_arr);
+    double *hgrid = (double *)PyArray_DATA(h_arr);
+    int metric_id = (strcmp(metric, "ise") == 0) ? 1 : 0;
+
+    npy_intp dims[1] = {nh};
+    PyArrayObject *scores_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    if (!scores_arr) return NULL;
+    double *scores = (double *)PyArray_DATA(scores_arr);
+
+    for (int hi = 0; hi < nh; hi++) {
+        scores[hi] = loo_score(data, n, hgrid[hi], metric_id);
+    }
+    return (PyObject *)scores_arr;
+}
+
+static PyObject *py_bandwidth_kfold(PyObject *self, PyObject *args) {
+    PyArrayObject *data_arr, *h_arr;
+    int k_folds;
+    const char *metric;
+
+    if (!PyArg_ParseTuple(args, "O!O!is", &PyArray_Type, &data_arr,
+                           &PyArray_Type, &h_arr, &k_folds, &metric))
+        return NULL;
+
+    int n    = (int)PyArray_SIZE(data_arr);
+    int nh   = (int)PyArray_SIZE(h_arr);
+    double *data  = (double *)PyArray_DATA(data_arr);
+    double *hgrid = (double *)PyArray_DATA(h_arr);
+    int metric_id = (strcmp(metric, "ise") == 0) ? 1 : 0;
+
+    npy_intp dims[1] = {nh};
+    PyArrayObject *scores_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    if (!scores_arr) return NULL;
+    double *scores = (double *)PyArray_DATA(scores_arr);
+
+    for (int hi = 0; hi < nh; hi++) {
+        scores[hi] = kfold_score(data, n, k_folds, hgrid[hi], metric_id);
+    }
+    return (PyObject *)scores_arr;
+}
 
 static PyMethodDef KernMethods[] = {
 
@@ -439,6 +565,10 @@ static PyMethodDef KernMethods[] = {
      "External KDE with boundary reflection. Args: data, xs, h, kernel_name."},
     
     // Bandwidth optimization
+    {"bandwidth_loo",         py_bandwidth_loo,         METH_VARARGS,
+     "LOO-CV scores over h_grid. Args: data, h_grid, metric ('loglik'|'ise')."},
+    {"bandwidth_kfold",       py_bandwidth_kfold,       METH_VARARGS,
+     "K-Fold CV scores over h_grid. Args: data, h_grid, k_folds, metric."},
 
     // optimization? precision performance tradeoff? torch?
 
