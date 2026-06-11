@@ -1,62 +1,21 @@
+import numpy as np
 import kern
-import numpy as np
-from scipy.stats import gaussian_kde, norm
-import time
-import numpy as np
-from scipy.stats import gaussian_kde
-from math import sqrt, pi
-np.random.seed(42)
-CONST = 1 / sqrt(2 * pi)
 
-def loo_kde_1d_fast(x):
-    x = np.asarray(x, dtype=float)
-    n = x.size
-    h = 0.5
+data = np.random.default_rng(0).normal(size=100).astype(np.float64)
+xs = np.linspace(-3, 3, 200).astype(np.float64)
+h_grid = np.linspace(0.05, 1.0, 20).astype(np.float64)
 
-    z = (x[:, None] - x[None, :]) / h
-    K = np.exp(-0.5 * z*z) * CONST
+h = h_grid[np.argmax(kern.bandwidth_loo(data, h_grid, "loglik"))]
 
-    np.fill_diagonal(K, 0.0)
+for kernel in ["gaussian", "epanechnikov", "triangular", "uniform", "cosine"]:
+    print(kernel, kern.kernel_is_symmetric(kernel))
+    print(kern.kde(data, xs, h, kernel)[:5])
+    print(kern.kde_self(data, h, kernel)[:5])
 
-    return K.sum(axis=1) / ((n - 1) * h)
+bounded_data = np.random.default_rng(1).beta(2, 5, size=100).astype(np.float64)
+bounded_xs = np.linspace(0.001, 0.999, 200).astype(np.float64)
 
-def loo_kde_1d_chunked(x, chunk=2000):
-    x = np.asarray(x, dtype=float)
-    n = x.size
-    h = 0.5
-
-    out = np.empty(n)
-
-    for start in range(0, n, chunk):
-        stop = min(start + chunk, n)
-        z = (x[start:stop, None] - x[None, :]) / h
-        K = np.exp(-0.5 * z*z) * CONST
-
-        rows = np.arange(start, stop)
-        K[np.arange(stop - start), rows] = 0.0
-
-        out[start:stop] = K.sum(axis=1) / ((n - 1) * h)
-
-    return out
-
-x = np.random.random(20000)
-
-print('-'*15)
-t1 = time.perf_counter()
-print(kern.kde(x)[:5])
-t2 = time.perf_counter()
-print(t2-t1)
-
-print('-'*15)
-t1 = time.perf_counter()
-print(loo_kde_1d_fast(x)[:5])
-t2 = time.perf_counter()
-print(t2-t1)
-
-print('-'*15)
-t1 = time.perf_counter()
-print(loo_kde_1d_chunked(x)[:5])
-t2 = time.perf_counter()
-print(t2-t1)
-print('-'*15)
-
+print(kern.kde_beta_ext(bounded_data, bounded_xs, 0.05)[:5])
+print(kern.kde_beta_self(bounded_data, 0.05)[:5])
+print(kern.kde_reflected_ext(bounded_data, bounded_xs, 0.05, "gaussian")[:5])
+print(kern.kde_reflected_self(bounded_data, 0.05, "gaussian")[:5])

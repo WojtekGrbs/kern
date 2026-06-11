@@ -22,6 +22,41 @@ static int metric_from_name(const char *metric) {
     return (strcmp(metric, "ise") == 0) ? 1 : 0;
 }
 
+static const kernel1d_info *require_kernel(const char *kernel_name) {
+    const kernel1d_info *kernel = get_kernel(kernel_name);
+    if (!kernel) {
+        PyErr_SetString(PyExc_ValueError, "Unknown kernel name");
+        return NULL;
+    }
+    return kernel;
+}
+
+static const kernel1d_info *require_symmetric_kernel(const char *kernel_name) {
+    const kernel1d_info *kernel = require_kernel(kernel_name);
+    if (!kernel) return NULL;
+
+    if (!kernel->is_symmetric) {
+        PyErr_SetString(PyExc_ValueError, "Reflected KDE requires a symmetric kernel");
+        return NULL;
+    }
+    return kernel;
+}
+
+static PyObject *py_kernel_is_symmetric(PyObject *self, PyObject *args) {
+    (void)self;
+
+    const char *kernel_name;
+    if (!PyArg_ParseTuple(args, "s", &kernel_name)) {
+        return NULL;
+    }
+
+    const kernel1d_info *kernel = require_kernel(kernel_name);
+    if (!kernel) return NULL;
+
+    if (kernel->is_symmetric) Py_RETURN_TRUE;
+    Py_RETURN_FALSE;
+}
+
 static PyObject *py_kde_infinite_self(PyObject *self, PyObject *args) {
     (void)self;
 
@@ -36,6 +71,9 @@ static PyObject *py_kde_infinite_self(PyObject *self, PyObject *args) {
         return NULL;
     }
 
+    const kernel1d_info *kernel = require_kernel(kernel_name);
+    if (!kernel) return NULL;
+
     int n = (int)PyArray_SIZE(data_arr);
     double *data = (double *)PyArray_DATA(data_arr);
 
@@ -48,13 +86,7 @@ static PyObject *py_kde_infinite_self(PyObject *self, PyObject *args) {
     if (strcmp(kernel_name, "gaussian") == 0) {
         self_kde_gaussian(data, out, n, h);
     } else {
-        kernel1d_fn kfn = get_kernel_fn(kernel_name);
-        if (!kfn) {
-            PyErr_SetString(PyExc_ValueError, "Unknown kernel name");
-            Py_DECREF(out_arr);
-            return NULL;
-        }
-        self_kde_generic(data, out, n, h, kfn);
+        self_kde_generic(data, out, n, h, kernel);
     }
 
     return (PyObject *)out_arr;
@@ -76,6 +108,9 @@ static PyObject *py_kde_infinite_ext(PyObject *self, PyObject *args) {
         return NULL;
     }
 
+    const kernel1d_info *kernel = require_kernel(kernel_name);
+    if (!kernel) return NULL;
+
     int n = (int)PyArray_SIZE(data_arr);
     int m = (int)PyArray_SIZE(xs_arr);
     double *data = (double *)PyArray_DATA(data_arr);
@@ -90,13 +125,7 @@ static PyObject *py_kde_infinite_ext(PyObject *self, PyObject *args) {
     if (strcmp(kernel_name, "gaussian") == 0) {
         ext_kde_gaussian(data, n, xs, out, m, h);
     } else {
-        kernel1d_fn kfn = get_kernel_fn(kernel_name);
-        if (!kfn) {
-            PyErr_SetString(PyExc_ValueError, "Unknown kernel name");
-            Py_DECREF(out_arr);
-            return NULL;
-        }
-        ext_kde_generic(data, n, xs, out, m, h, kfn);
+        ext_kde_generic(data, n, xs, out, m, h, kernel);
     }
 
     return (PyObject *)out_arr;
@@ -169,11 +198,8 @@ static PyObject *py_kde_reflected_self(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    kernel1d_fn kfn = get_kernel_fn(kernel_name);
-    if (!kfn) {
-        PyErr_SetString(PyExc_ValueError, "Unknown kernel name");
-        return NULL;
-    }
+    const kernel1d_info *kernel = require_symmetric_kernel(kernel_name);
+    if (!kernel) return NULL;
 
     int n = (int)PyArray_SIZE(data_arr);
     npy_intp dims[1] = {n};
@@ -181,7 +207,7 @@ static PyObject *py_kde_reflected_self(PyObject *self, PyObject *args) {
     if (!out_arr) return NULL;
 
     self_kde_reflected((double *)PyArray_DATA(data_arr),
-                       (double *)PyArray_DATA(out_arr), n, h, kfn);
+                       (double *)PyArray_DATA(out_arr), n, h, kernel);
 
     return (PyObject *)out_arr;
 }
@@ -202,11 +228,8 @@ static PyObject *py_kde_reflected_ext(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    kernel1d_fn kfn = get_kernel_fn(kernel_name);
-    if (!kfn) {
-        PyErr_SetString(PyExc_ValueError, "Unknown kernel name");
-        return NULL;
-    }
+    const kernel1d_info *kernel = require_symmetric_kernel(kernel_name);
+    if (!kernel) return NULL;
 
     int n = (int)PyArray_SIZE(data_arr);
     int m = (int)PyArray_SIZE(xs_arr);
@@ -216,7 +239,7 @@ static PyObject *py_kde_reflected_ext(PyObject *self, PyObject *args) {
 
     ext_kde_reflected((double *)PyArray_DATA(data_arr), n,
                       (double *)PyArray_DATA(xs_arr),
-                      (double *)PyArray_DATA(out_arr), m, h, kfn);
+                      (double *)PyArray_DATA(out_arr), m, h, kernel);
 
     return (PyObject *)out_arr;
 }
@@ -289,6 +312,10 @@ static PyObject *py_bandwidth_kfold(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef KernMethods[] = {
+    /* Kernel metadata */
+    {"kernel_is_symmetric", py_kernel_is_symmetric, METH_VARARGS,
+     "Return whether a named kernel is symmetric. Args: kernel_name."},
+
     /* Infinite-support / standard kernels */
     {"kde_self", py_kde_infinite_self, METH_VARARGS,
      "Self-KDE with kernel (LOO). Args: data, h, kernel_name."},
