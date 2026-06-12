@@ -21,6 +21,7 @@ typedef struct {
     kernel1d_fn fn;
     int is_symmetric;
     kernel1d_id id;
+    double default_cutoff; //coefficient a of a*bandwidth
 } kernel1d_info;
 
 /* Gaussian kernel: K(u) = (1/sqrt(2*pi)) * exp(-0.5*u^2) */
@@ -89,5 +90,6 @@ static inline double kernel_beta(double x, double xi, double h) {
 const kernel1d_info *get_kernel(const char *name);
 kernel1d_fn get_kernel_fn(const char *name);
 int get_kernel_is_symmetric(const char *name);
+double get_kernel_default_cutoff(const char *name);
 
 #endif

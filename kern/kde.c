@@ -299,7 +299,6 @@ void ext_kde_beta(const double *restrict data, int n,
         double xi  = xs[i];
         double sum = 0.0;
 
-        OMP_PRAGMA(omp simd reduction(+:sum))
         for (int j = 0; j < n; j++) {
             sum += kernel_beta(xi, data[j], h);
         }
@@ -588,7 +587,7 @@ void self_kde_reflected(const double *restrict data, double *restrict out,
 #define DEFINE_EXT_KDE_REFLECTED(NAME, KFN)                                    \
 static void ext_kde_reflected_##NAME(const double *restrict data, int n,        \
                                      const double *restrict xs,                 \
-                                     double *restrict out,                   \
+                                     double *restrict out,                      \
                                      int m, double h) {                        \
     double inv_nh = 1.0 / (n * h);                                              \
     double inv_h  = 1.0 / h;                                                    \
