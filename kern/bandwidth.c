@@ -291,7 +291,7 @@ void bandwidth_score_grid(const double *restrict data, int n,
         double *workspace =
             (double *)malloc(workspace_count * sizeof(double));
 
-        OMP_PRAGMA(omp for schedule(dynamic, 1))
+        OMP_PRAGMA(omp for schedule(static))
         for (int hi = 0; hi < n_bandwidths; hi++) {
             scores[hi] = workspace
                        ? score_serial(used_data, n, h_grid[hi], k_folds,

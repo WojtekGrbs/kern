@@ -11,7 +11,9 @@
 #else
   #define OMP_PRAGMA(x)
 #endif
-
+#ifdef USE_CBLAS
+#include <cblas.h>
+#endif
 #define MV_MAX_QUERY_BLOCK 64
 #define MV_DATA_BLOCK 128
 #define MV_PARTIALS_LIMIT ((size_t)256 * 1024 * 1024) //limits so that n_threads*n does not explode
@@ -47,6 +49,17 @@ static double inverse_h_power(double h, int dimensions) {
 static inline double gaussian_pair(const double *restrict x,
                                    const double *restrict point,
                                    int dimensions, double inv_h) {
+#ifdef USE_CBLAS
+    double xx = cblas_ddot(dimensions, x, 1, x, 1);
+    double pp = cblas_ddot(dimensions, point, 1, point, 1);
+    double xp = cblas_ddot(dimensions, x, 1, point, 1);
+
+    double squared = (xx + pp - 2.0 * xp) * inv_h * inv_h;
+
+    if (squared < 0.0 && squared > -1e-12) squared = 0.0;
+
+    return exp(-0.5 * squared);
+#else
     double squared = 0.0;
     OMP_PRAGMA(omp simd reduction(+:squared))
     for (int d = 0; d < dimensions; d++) {
@@ -54,6 +67,7 @@ static inline double gaussian_pair(const double *restrict x,
         squared += delta * delta;
     }
     return exp(-0.5 * squared);
+#endif
 }
 
 #define DEFINE_PRODUCT_PAIR(NAME, KFN)                                         \
@@ -79,8 +93,6 @@ static void blocked_ext_##NAME(const double *restrict data, int n,             \
                                double *restrict out, int m, double inv_h,       \
                                double scale, int query_block) {                \
     int block_count = (m + query_block - 1) / query_block;                     \
-    long long work = (long long)n * m * dimensions;                            \
-    (void)work;                                                                 \
     OMP_PRAGMA(omp parallel for schedule(static))             \
     for (int block = 0; block < block_count; block++) {                        \
         int first_query = block * query_block;                                  \
@@ -112,8 +124,6 @@ static void blocked_self_##NAME(const double *restrict data,                   \
                                 double *restrict out, int n, int dimensions,   \
                                 double inv_h, double scale, int query_block) { \
     int block_count = (n + query_block - 1) / query_block;                     \
-    long long work = (long long)n * n * dimensions;                            \
-    (void)work;                                                                 \
     OMP_PRAGMA(omp parallel for schedule(static))             \
     for (int block = 0; block < block_count; block++) {                        \
         int first_query = block * query_block;                                  \
