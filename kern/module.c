@@ -96,9 +96,9 @@ static int metric_from_name(const char *metric) {
 static int parallel_from_name(const char *parallel) {
     if (strcmp(parallel, "auto") == 0) return BANDWIDTH_PARALLEL_AUTO;
     if (strcmp(parallel, "bandwidths") == 0) {
-        return BANDWIDTH_PARALLEL_BANDWIDTHS;
+        return BANDWIDTH_PARALLEL_GRID;
     }
-    if (strcmp(parallel, "kernels") == 0) return BANDWIDTH_PARALLEL_KERNELS;
+    if (strcmp(parallel, "kernels") == 0) return BANDWIDTH_PARALLEL_EVALUATION;
     PyErr_SetString(PyExc_ValueError,
                     "parallel must be 'auto', 'bandwidths', or 'kernels'");
     return -1;
@@ -351,44 +351,46 @@ static PyObject *py_bandwidth_loo(PyObject *self, PyObject *args) {
 
     PyArrayObject *data_arr;
     PyArrayObject *h_arr;
-    const char *metric;
     const char *kernel_name = "gaussian";
     const char *parallel = "auto";
 
-    if (!PyArg_ParseTuple(args, "O!O!s|ss", &PyArray_Type, &data_arr,
-                          &PyArray_Type, &h_arr, &metric,
+    if (!PyArg_ParseTuple(args, "O!O!|ss", &PyArray_Type, &data_arr,
+                          &PyArray_Type, &h_arr,
                           &kernel_name, &parallel)) {
         return NULL;
     }
+
     if (!require_float64_1d(data_arr, "data") ||
         !require_float64_1d(h_arr, "h_grid") ||
-        !require_nonempty(data_arr, "data") || !require_bandwidth_grid(h_arr)) {
+        !require_nonempty(data_arr, "data") ||
+        !require_bandwidth_grid(h_arr)) {
         return NULL;
     }
 
     const kernel1d_info *kernel = require_kernel(kernel_name);
     if (!kernel) return NULL;
 
+    int parallel_id = parallel_from_name(parallel);
+    if (parallel_id < 0) return NULL;
+
     int n = (int)PyArray_SIZE(data_arr);
     int nh = (int)PyArray_SIZE(h_arr);
-    double *data  = (double *)PyArray_DATA(data_arr);
-    double *hgrid = (double *)PyArray_DATA(h_arr);
-    int metric_id = metric_from_name(metric);
-    int parallel_id = parallel_from_name(parallel);
-    if (metric_id < 0 || parallel_id < 0) return NULL;
 
     npy_intp dims[1] = {nh};
-    PyArrayObject *scores_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    PyArrayObject *scores_arr =
+        (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
     if (!scores_arr) return NULL;
 
-    double *scores = (double *)PyArray_DATA(scores_arr);
     Py_BEGIN_ALLOW_THREADS
-    bandwidth_score_grid(data, n, hgrid, nh, &kernel, 1, 1, metric_id,
-                         parallel_id, scores);
+    bandwidth_score_grid((double *)PyArray_DATA(data_arr), n,
+                         (double *)PyArray_DATA(h_arr), nh,
+                         kernel, 1, parallel_id,
+                         (double *)PyArray_DATA(scores_arr));
     Py_END_ALLOW_THREADS
 
     return (PyObject *)scores_arr;
 }
+
 
 static PyObject *py_bandwidth_kfold(PyObject *self, PyObject *args) {
     (void)self;
@@ -396,23 +398,21 @@ static PyObject *py_bandwidth_kfold(PyObject *self, PyObject *args) {
     PyArrayObject *data_arr;
     PyArrayObject *h_arr;
     int k_folds;
-    const char *metric;
     const char *kernel_name = "gaussian";
     const char *parallel = "auto";
 
-    if (!PyArg_ParseTuple(args, "O!O!is|ss", &PyArray_Type, &data_arr,
-                          &PyArray_Type, &h_arr, &k_folds, &metric,
-                          &kernel_name, &parallel)) {
-        return NULL;
-    }
-    if (!require_float64_1d(data_arr, "data") ||
-        !require_float64_1d(h_arr, "h_grid") ||
-        !require_nonempty(data_arr, "data") || !require_bandwidth_grid(h_arr)) {
+    if (!PyArg_ParseTuple(args, "O!O!i|ss", &PyArray_Type, &data_arr,
+                          &PyArray_Type, &h_arr,
+                          &k_folds, &kernel_name, &parallel)) {
         return NULL;
     }
 
-    const kernel1d_info *kernel = require_kernel(kernel_name);
-    if (!kernel) return NULL;
+    if (!require_float64_1d(data_arr, "data") ||
+        !require_float64_1d(h_arr, "h_grid") ||
+        !require_nonempty(data_arr, "data") ||
+        !require_bandwidth_grid(h_arr)) {
+        return NULL;
+    }
 
     int n = (int)PyArray_SIZE(data_arr);
     if (k_folds < 2 || k_folds > n) {
@@ -420,44 +420,49 @@ static PyObject *py_bandwidth_kfold(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    int nh = (int)PyArray_SIZE(h_arr);
-    double *data  = (double *)PyArray_DATA(data_arr);
-    double *hgrid = (double *)PyArray_DATA(h_arr);
-    int metric_id = metric_from_name(metric);
+    const kernel1d_info *kernel = require_kernel(kernel_name);
+    if (!kernel) return NULL;
+
     int parallel_id = parallel_from_name(parallel);
-    if (metric_id < 0 || parallel_id < 0) return NULL;
+    if (parallel_id < 0) return NULL;
+
+    int nh = (int)PyArray_SIZE(h_arr);
 
     npy_intp dims[1] = {nh};
-    PyArrayObject *scores_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    PyArrayObject *scores_arr =
+        (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
     if (!scores_arr) return NULL;
 
-    double *scores = (double *)PyArray_DATA(scores_arr);
     Py_BEGIN_ALLOW_THREADS
-    bandwidth_score_grid(data, n, hgrid, nh, &kernel, 1, k_folds, metric_id,
-                         parallel_id, scores);
+    bandwidth_score_grid((double *)PyArray_DATA(data_arr), n,
+                         (double *)PyArray_DATA(h_arr), nh,
+                         kernel, k_folds, parallel_id,
+                         (double *)PyArray_DATA(scores_arr));
     Py_END_ALLOW_THREADS
 
     return (PyObject *)scores_arr;
 }
+
 
 static PyObject *py_bandwidth_grid(PyObject *self, PyObject *args) {
     (void)self;
 
     PyArrayObject *data_arr;
     PyArrayObject *h_arr;
-    PyObject *kernel_names;
-    int k_folds;
-    const char *metric;
-    const char *parallel;
+    const char *kernel_name = "gaussian";
+    int k_folds = 1;
+    const char *parallel = "auto";
 
-    if (!PyArg_ParseTuple(args, "O!O!Oiss", &PyArray_Type, &data_arr,
-                          &PyArray_Type, &h_arr, &kernel_names,
-                          &k_folds, &metric, &parallel)) {
+    if (!PyArg_ParseTuple(args, "O!O!|sis", &PyArray_Type, &data_arr,
+                          &PyArray_Type, &h_arr,
+                          &kernel_name, &k_folds, &parallel)) {
         return NULL;
     }
+
     if (!require_float64_1d(data_arr, "data") ||
         !require_float64_1d(h_arr, "h_grid") ||
-        !require_nonempty(data_arr, "data") || !require_bandwidth_grid(h_arr)) {
+        !require_nonempty(data_arr, "data") ||
+        !require_bandwidth_grid(h_arr)) {
         return NULL;
     }
 
@@ -468,63 +473,26 @@ static PyObject *py_bandwidth_grid(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    int metric_id = metric_from_name(metric);
+    const kernel1d_info *kernel = require_kernel(kernel_name);
+    if (!kernel) return NULL;
+
     int parallel_id = parallel_from_name(parallel);
-    if (metric_id < 0 || parallel_id < 0) return NULL;
-
-    PyObject *names = PySequence_Fast(kernel_names,
-                                      "kernels must be a sequence of names");
-    if (!names) return NULL;
-
-    Py_ssize_t nk_size = PySequence_Fast_GET_SIZE(names);
-    if (nk_size < 1 || nk_size > INT_MAX) {
-        Py_DECREF(names);
-        PyErr_SetString(PyExc_ValueError, "kernels must not be empty");
-        return NULL;
-    }
-
-    int nk = (int)nk_size;
-    const kernel1d_info **kernels =
-        (const kernel1d_info **)malloc((size_t)nk * sizeof(*kernels));
-    if (!kernels) {
-        Py_DECREF(names);
-        return PyErr_NoMemory();
-    }
-
-    for (int i = 0; i < nk; i++) {
-        const char *name = PyUnicode_AsUTF8(PySequence_Fast_GET_ITEM(names, i));
-        if (!name) {
-            free(kernels);
-            Py_DECREF(names);
-            return NULL;
-        }
-        kernels[i] = require_kernel(name);
-        if (!kernels[i]) {
-            free(kernels);
-            Py_DECREF(names);
-            return NULL;
-        }
-    }
+    if (parallel_id < 0) return NULL;
 
     int nh = (int)PyArray_SIZE(h_arr);
-    npy_intp dims[2] = {nk, nh};
+
+    npy_intp dims[1] = {nh};
     PyArrayObject *scores_arr =
-        (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
-    if (!scores_arr) {
-        free(kernels);
-        Py_DECREF(names);
-        return NULL;
-    }
+        (PyArrayObject *)PyArray_SimpleNew(1, dims, NPY_DOUBLE);
+    if (!scores_arr) return NULL;
 
     Py_BEGIN_ALLOW_THREADS
     bandwidth_score_grid((double *)PyArray_DATA(data_arr), n,
-                         (double *)PyArray_DATA(h_arr), nh, kernels, nk,
-                         k_folds, metric_id, parallel_id,
+                         (double *)PyArray_DATA(h_arr), nh,
+                         kernel, k_folds, parallel_id,
                          (double *)PyArray_DATA(scores_arr));
     Py_END_ALLOW_THREADS
 
-    free(kernels);
-    Py_DECREF(names);
     return (PyObject *)scores_arr;
 }
 
