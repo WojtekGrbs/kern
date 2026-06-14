@@ -328,8 +328,8 @@ ext = Extension(
 )
 
 setup(
-    name="kern",
-    version="0.2.1",
+    name="kern_kde",
+    version="0.2.1a1",
     description=DESCRIPTION,
     long_description=read_long_description(),
     long_description_content_type="text/markdown",
