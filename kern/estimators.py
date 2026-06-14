@@ -186,9 +186,28 @@ class ApproximateKernelDensity(_Estimator):
     Set ``fast_gaussian=True`` to use Schraudolph's exponential approximation.
     ``memory="high"`` evaluates symmetric self-pairs once with per-thread
     buffers and caches external cutoff bounds. ``"low"`` avoids those buffers,
-    while ``"auto"`` chooses based on problem size and cutoff density.
-    """
+    while ``"auto"`` chooses based on problem size.
 
+    Parameters
+    ----------
+    bandwidth : float, default=1.0
+        Kernel bandwidth.
+    kernel : str, default="gaussian"
+        Kernel name.
+    cutoff : float or None, default=None
+        Distance cutoff measured in bandwidths. If ``None``, compact kernels
+        use 1 and Gaussian uses 4.
+    max_neighbors : int or None, default=None
+        Maximum number of neighbors to evaluate on each side of a point.
+    fast_gaussian : bool, default=False
+        Whether to use Schraudolph's exponential approximation for Gaussian
+        kernels.
+    memory : {"auto", "high", "low"}, default="auto"
+        Memory strategy. ``"high"`` evaluates symmetric self-pairs once with
+        per-thread buffers and caches external cutoff bounds. ``"low"`` avoids
+        those buffers. ``"auto"`` chooses based on problem size and cutoff
+        density.
+    """
     _parameter_names = (
         "bandwidth", "kernel", "cutoff", "max_neighbors", "fast_gaussian",
         "memory"
@@ -250,10 +269,20 @@ class ApproximateKernelDensity(_Estimator):
 
 
 class BoundedKernelDensity(_Estimator):
-    """One-dimensional KDE for data on [0, 1].
+    """One-dimensional KDE for data on the [0, 1] unit interval.
 
     ``method="reflected"`` works with every symmetric standard kernel.
     ``method="beta"`` uses the boundary-aware Beta kernel.
+
+    Parameters
+    ----------
+    bandwidth : float, default=0.1
+        Kernel bandwidth.
+    kernel : str, default="gaussian"
+        Kernel name used by the reflected method.
+    method : {"reflected", "beta"}, default="reflected"
+        Boundary correction method. ``"reflected"`` works with every symmetric
+        standard kernel. ``"beta"`` uses the boundary-aware Beta kernel.
     """
 
     _parameter_names = ("bandwidth", "kernel", "method")
@@ -309,10 +338,20 @@ class BoundedKernelDensity(_Estimator):
 
 
 class MultivariateKernelDensity(_Estimator):
-    """Multivariate KDE using blocked, cache-friendly product kernels.
+    """Multivariate KDE.
 
     ``block_size`` controls how many query rows reuse each cached data block.
     Values from 16 to 64 are usually useful; the default is 32.
+
+    Parameters
+    ----------
+    bandwidth : float, default=1.0
+        Kernel bandwidth.
+    kernel : str, default="gaussian"
+        Kernel name.
+    block_size : int, default=32
+        Number of query rows that reuse each cached data block. Values from
+        16 to 64 are usually useful.
     """
 
     _parameter_names = ("bandwidth", "kernel", "block_size")
