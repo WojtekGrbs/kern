@@ -11,8 +11,10 @@
 #else
   #define OMP_PRAGMA(x)
 #endif
-#ifdef USE_CBLAS
-#include <cblas.h>
+#ifdef USE_ACCELERATE
+  #include <Accelerate/Accelerate.h>
+#elif defined(USE_CBLAS)
+  #include <cblas.h>
 #endif
 #define MV_MAX_QUERY_BLOCK 64
 #define MV_DATA_BLOCK 128

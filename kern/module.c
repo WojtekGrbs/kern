@@ -86,21 +86,18 @@ static int require_sorted(PyArrayObject *arr, const char *name) {
     return 1;
 }
 
-static int metric_from_name(const char *metric) {
-    if (strcmp(metric, "loglik") == 0) return BANDWIDTH_LOG_LIKELIHOOD;
-    if (strcmp(metric, "ise") == 0) return BANDWIDTH_ISE;
-    PyErr_SetString(PyExc_ValueError, "metric must be 'loglik' or 'ise'");
-    return -1;
-}
-
 static int parallel_from_name(const char *parallel) {
     if (strcmp(parallel, "auto") == 0) return BANDWIDTH_PARALLEL_AUTO;
-    if (strcmp(parallel, "bandwidths") == 0) {
+    if (strcmp(parallel, "grid") == 0 ||
+        strcmp(parallel, "bandwidths") == 0) {
         return BANDWIDTH_PARALLEL_GRID;
     }
-    if (strcmp(parallel, "kernels") == 0) return BANDWIDTH_PARALLEL_EVALUATION;
+    if (strcmp(parallel, "evaluation") == 0 ||
+        strcmp(parallel, "kernels") == 0) {
+        return BANDWIDTH_PARALLEL_EVALUATION;
+    }
     PyErr_SetString(PyExc_ValueError,
-                    "parallel must be 'auto', 'bandwidths', or 'kernels'");
+                    "parallel must be 'auto', 'grid', or 'evaluation'");
     return -1;
 }
 
