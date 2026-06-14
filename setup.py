@@ -329,7 +329,7 @@ ext = Extension(
 
 setup(
     name="kern",
-    version="0.2.0",
+    version="0.2.1",
     description=DESCRIPTION,
     long_description=read_long_description(),
     long_description_content_type="text/markdown",

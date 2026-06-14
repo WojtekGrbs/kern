@@ -1,0 +1,10 @@
+# Changelog 
+
+## To Do
+
+* Add FFT for grid-based KDE
+* Add approximations for multivariate KDE
+
+## 0.2.1-alpha (2026-06-14)
+A pre-release that hopefully works
+
