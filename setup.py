@@ -289,7 +289,7 @@ class BuildExt(build_ext):
                 ]
             else:
                 # Other compilers (gcc/clang): standard optimization flag
-                extension.extra_compile_args = ["-O3"]
+                extension.extra_compile_args = ["-O3", "-fno-math-errno", "-march=native",]
 
             extension.extra_link_args = []
             self.configure_openmp(extension)
