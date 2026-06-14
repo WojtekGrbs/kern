@@ -5,7 +5,7 @@ Install a prebuilt wheel from PyPI:
 
 .. code-block:: console
 
-   python -m pip install kern
+   python -m pip install kern_kde
 
 When a wheel is not available, pip builds the C extension from source. The
 build detects CBLAS and OpenMP by compiling and linking small test programs.
@@ -33,7 +33,7 @@ For example:
    KERN_BLAS_INCLUDE_DIRS=/opt/openblas/include \
    KERN_BLAS_LIBRARY_DIRS=/opt/openblas/lib \
    KERN_BLAS_LIBRARIES=openblas \
-   python -m pip install .
+   python -m pip install kern_kde
 
 On macOS, Accelerate is detected as the preferred CBLAS implementation.
 OpenMP uses Homebrew ``libomp`` when it is installed. To point to a different

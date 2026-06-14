@@ -7,7 +7,7 @@ estimators with a scikit-learn-like API.
 ## Installation
 
 ```console
-python -m pip install kern
+python -m pip install kern_kde
 ```
 
 ## Example usage
