@@ -150,6 +150,6 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Verify tag matches package version
-        run: test -f "dist/kern-${GITHUB_REF_NAME#v}.tar.gz"
+        run: test -f "dist/kern_kde-${GITHUB_REF_NAME#v}.tar.gz"
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
