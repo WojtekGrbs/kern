@@ -3,6 +3,9 @@ README.md
 # vscode-specific
 .vscode
 
+# macOS metadata
+.DS_Store
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

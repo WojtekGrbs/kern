@@ -1,0 +1,9 @@
+[build-system]
+requires = ["setuptools>=64", "wheel", "numpy>=1.23"]
+build-backend = "setuptools.build_meta"
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
+skip = "*-musllinux_*"
+test-requires = "pytest>=8"
+test-command = "pytest {project}/tests"
