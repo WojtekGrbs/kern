@@ -4,7 +4,7 @@ from importlib.metadata import version as package_version
 
 project = "kern"
 author = "Wojciech Grabias"
-release = package_version("kern")
+release = package_version("kern_kde")
 
 extensions = [
     "sphinx.ext.autodoc",   
