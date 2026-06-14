@@ -83,6 +83,8 @@ jobs:
           persist-credentials: false
       - name: Build wheels
         uses: pypa/cibuildwheel@v4.1.0
+        env:
+          CIBW_ENVIRONMENT_WINDOWS: KERN_USE_OPENMP=disabled # No openmp for Windows :(
       - uses: actions/upload-artifact@v7
         with:
           name: distribution-wheels-${{ matrix.os }}

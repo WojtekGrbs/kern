@@ -118,6 +118,8 @@ def openmp_config():
     if sys.platform == "win32":
         # attempt for:
         # error C7660: 'simd': requires '-openmp:experimental' command line option(s)
+        # return config("MSVC OpenMP SIMD", extra_compile_args=["/openmp:experimental"]) 
+        # did not work...
         return config("MSVC OpenMP SIMD", extra_compile_args=["/openmp:experimental"]) 
 
     ## NON-MACOS
@@ -293,8 +295,9 @@ class BuildExt(build_ext):
 
                 if platform.system() == "Darwin" and platform.machine() == "arm64":
                     compile_args.append("-mcpu=apple-m1")  # error: unknown target CPU 'apple-m3' (?)
-                elif platform.machine() in ("x86_64", "AMD64"):
-                    compile_args.append("-march=native")
+                # Probably unsafe:
+                # elif platform.machine() in ("x86_64", "AMD64"):
+                #     compile_args.append("-march=native")
                 extension.extra_compile_args = compile_args
 
             extension.extra_link_args = []
