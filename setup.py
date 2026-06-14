@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
+import platform
 import numpy
 from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
@@ -116,8 +116,9 @@ def openmp_config():
 
     ## WINDOWS 
     if sys.platform == "win32":
-        # MSVC uses a simple /openmp flag
-        return config("MSVC OpenMP", extra_compile_args=["/openmp"])
+        # attempt for:
+        # error C7660: 'simd': requires '-openmp:experimental' command line option(s)
+        return config("MSVC OpenMP SIMD", extra_compile_args=["/openmp:experimental"]) 
 
     ## NON-MACOS
     if sys.platform != "darwin":
@@ -288,8 +289,13 @@ class BuildExt(build_ext):
                     ("restrict", "__restrict"),
                 ]
             else:
-                # Other compilers (gcc/clang): standard optimization flag
-                extension.extra_compile_args = ["-O3", "-fno-math-errno", "-march=native",]
+                compile_args = ["-O3", "-fno-math-errno"]
+
+                if platform.system() == "Darwin" and platform.machine() == "arm64":
+                    compile_args.append("-mcpu=apple-m1")  # error: unknown target CPU 'apple-m3' (?)
+                elif platform.machine() in ("x86_64", "AMD64"):
+                    compile_args.append("-march=native")
+                extension.extra_compile_args = compile_args
 
             extension.extra_link_args = []
             self.configure_openmp(extension)
