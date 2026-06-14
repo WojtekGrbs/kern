@@ -120,7 +120,7 @@ def openmp_config():
         # error C7660: 'simd': requires '-openmp:experimental' command line option(s)
         # return config("MSVC OpenMP SIMD", extra_compile_args=["/openmp:experimental"]) 
         # did not work...
-        return config("MSVC OpenMP SIMD", extra_compile_args=["/openmp:experimental"]) 
+        return None
 
     ## NON-MACOS
     if sys.platform != "darwin":
