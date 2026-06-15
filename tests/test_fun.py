@@ -124,6 +124,13 @@ def test_all_core_functions_are_publicly_exported():
     assert all(getattr(kern, name) is getattr(_fun, name) for name in _fun.__all__)
 
 
+def test_build_feature_helpers():
+    assert type(kern.has_openmp()) is bool
+    assert type(kern.has_blas()) is bool
+    assert kern.has_openmp() is _core.has_openmp()
+    assert kern.has_blas() is _core.has_blas()
+
+
 @pytest.mark.parametrize("kernel", KERNELS)
 def test_kernel_metadata(kernel):
     assert _fun.kernel_is_symmetric(kernel) is True

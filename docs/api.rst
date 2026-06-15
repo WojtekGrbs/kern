@@ -24,3 +24,10 @@ Bandwidth grids
 ---------------
 
 .. autofunction:: kern.default_bandwidth_grid
+
+Build features
+--------------
+
+.. autofunction:: kern.has_openmp
+
+.. autofunction:: kern.has_blas

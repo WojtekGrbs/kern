@@ -21,6 +21,16 @@ _CORE_PARALLEL_MODES = {
 _MEMORY_MODE_IDS = {"low": 0, "high": 1, "auto": 2}
 
 
+def has_openmp():
+    """Return whether the current build uses OpenMP."""
+    return bool(_core.has_openmp())
+
+
+def has_blas():
+    """Return whether the current build uses BLAS."""
+    return bool(_core.has_blas())
+
+
 def _array_1d(values, name, *, nonempty=True):
     try:
         array = np.asarray(values, dtype=np.float64)
@@ -279,6 +289,8 @@ __all__ = [
     "bandwidth_grid",
     "bandwidth_kfold",
     "bandwidth_loo",
+    "has_blas",
+    "has_openmp",
     "kde",
     "kde_approx",
     "kde_approx_self",

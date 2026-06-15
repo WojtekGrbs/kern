@@ -121,6 +121,28 @@ static const kernel1d_info *require_symmetric_kernel(const char *kernel_name) {
     return kernel;
 }
 
+static PyObject *py_has_openmp(PyObject *self, PyObject *args) {
+    (void)self;
+    (void)args;
+
+#if defined(_OPENMP)
+    Py_RETURN_TRUE;
+#else
+    Py_RETURN_FALSE;
+#endif
+}
+
+static PyObject *py_has_blas(PyObject *self, PyObject *args) {
+    (void)self;
+    (void)args;
+
+#if defined(USE_CBLAS)
+    Py_RETURN_TRUE;
+#else
+    Py_RETURN_FALSE;
+#endif
+}
+
 static PyObject *py_kernel_is_symmetric(PyObject *self, PyObject *args) {
     (void)self;
 
@@ -695,6 +717,12 @@ static PyObject *py_kde_multivariate_ext(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef KernMethods[] = {
+    /* Build features */
+    {"has_openmp", py_has_openmp, METH_NOARGS,
+     "Return whether this build uses OpenMP."},
+    {"has_blas", py_has_blas, METH_NOARGS,
+     "Return whether this build uses BLAS."},
+
     /* Kernel metadata */
     {"kernel_is_symmetric", py_kernel_is_symmetric, METH_VARARGS,
      "Return whether a named kernel is symmetric. Args: kernel_name."},
