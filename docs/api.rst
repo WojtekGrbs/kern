@@ -1,5 +1,6 @@
 API Reference
 =============
+All estimators assume `X` is an object that can be casted to a `np.ndarray` with `dtype=np.float64`.
 
 Estimators
 ----------
