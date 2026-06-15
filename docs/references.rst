@@ -1,9 +1,6 @@
 References
 ==========
 
-Only methods that directly inform an implementation choice in ``kern`` are
-listed here.
-
 .. _reference-silverman:
 
 Silverman, B. W. (1986). *Density Estimation for Statistics and Data

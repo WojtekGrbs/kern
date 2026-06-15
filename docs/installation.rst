@@ -33,7 +33,7 @@ For example:
    KERN_BLAS_INCLUDE_DIRS=/opt/openblas/include \
    KERN_BLAS_LIBRARY_DIRS=/opt/openblas/lib \
    KERN_BLAS_LIBRARIES=openblas \
-   python -m pip install kern_kde
+   python -m pip install --no-binary=kern-kde kern_kde
 
 On macOS, Accelerate is detected as the preferred CBLAS implementation.
 OpenMP uses Homebrew ``libomp`` when it is installed. To point to a different
