@@ -117,11 +117,15 @@ def reference_kfold(data, bandwidth, kernel, folds):
     return total / data.size
 
 
-def test_all_core_functions_are_publicly_exported():
+def test_all_core_functions_are_available_in_internal_fun_module():
     core_functions = {name for name in dir(_core) if not name.startswith("_")}
     assert set(_fun.__all__) == core_functions
-    assert set(_fun.__all__) <= set(kern.__all__)
-    assert all(getattr(kern, name) is getattr(_fun, name) for name in _fun.__all__)
+
+
+def test_low_level_fun_helpers_are_not_publicly_exported():
+    public_low_level_helpers = set(_fun.__all__) - {"has_blas", "has_openmp"}
+    assert public_low_level_helpers.isdisjoint(kern.__all__)
+    assert all(not hasattr(kern, name) for name in public_low_level_helpers)
 
 
 def test_build_feature_helpers():
@@ -129,6 +133,8 @@ def test_build_feature_helpers():
     assert type(kern.has_blas()) is bool
     assert kern.has_openmp() is _core.has_openmp()
     assert kern.has_blas() is _core.has_blas()
+    assert kern.has_openmp() is _fun.has_openmp()
+    assert kern.has_blas() is _fun.has_blas()
 
 
 @pytest.mark.parametrize("kernel", KERNELS)
