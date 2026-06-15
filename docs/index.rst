@@ -13,3 +13,4 @@ implementations. Its Python estimators follow a scikit-learn-like API.
    bandwidth_selection
    examples
    api
+   references

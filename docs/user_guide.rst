@@ -14,6 +14,9 @@ Approximate KDE
 ``fit``. A distance cutoff and optional neighbor limit reduce the number of
 kernel evaluations.
 
+For Gaussian kernels, ``fast_gaussian=True`` uses Schraudolph's exponential
+approximation :ref:`[Schraudolph 1999] <reference-schraudolph>`.
+
 ``memory="high"`` uses per-thread partial sums for symmetric self-KDE and can
 cache external cutoff bounds. ``memory="low"`` avoids those buffers.
 ``memory="auto"`` chooses based on the workload.
@@ -21,8 +24,10 @@ cache external cutoff bounds. ``memory="low"`` avoids those buffers.
 Bounded KDE
 -----------
 
-:class:`kern.BoundedKernelDensity` supports reflected standard kernels and the
-Beta kernel for samples on ``[0, 1]``.
+:class:`kern.BoundedKernelDensity` supports reflected standard kernels and a
+sample-centered Beta kernel for samples on ``[0, 1]``. The reflected method
+uses the reflection construction for support constraints
+:ref:`[Schuster 1985] <reference-schuster>`.
 
 Multivariate KDE
 ----------------

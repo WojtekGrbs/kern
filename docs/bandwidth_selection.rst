@@ -7,8 +7,9 @@ Default grid
 ------------
 
 When ``grid=None``, :class:`kern.BandwidthSelector` calls
-:func:`kern.default_bandwidth_grid`. The default is a 32-point logarithmic grid
-centered on a robust rule-of-thumb bandwidth.
+:func:`kern.default_bandwidth_grid`. The default is a 64-point logarithmic grid
+centered on Silverman's robust normal-reference bandwidth
+:ref:`[Silverman 1986] <reference-silverman>`.
 
 .. literalinclude:: ../examples/bandwidth_selection.py
    :language: python

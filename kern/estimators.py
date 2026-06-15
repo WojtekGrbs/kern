@@ -51,14 +51,15 @@ def _log_density(density):
 def default_bandwidth_grid(X, size=64, minimum=None, maximum=None):
     """Create a data-scaled logarithmic bandwidth grid.
 
-    The default range is centered on the rule-of-thumb bandwidth and
-    spans a factor of four in each direction.
+    The default range is centered on Silverman's robust normal-reference
+    bandwidth :ref:`[Silverman 1986] <reference-silverman>` and spans a factor
+    of four in each direction.
 
     Parameters
     ----------
     X : array-like
         One-dimensional training samples.
-    size : int, default=32
+    size : int, default=64
         Number of grid values.
     minimum : float or None, default=None
         Smallest bandwidth. Uses one quarter of the reference bandwidth when
@@ -183,7 +184,8 @@ class ApproximateKernelDensity(_Estimator):
     bandwidths. When it is ``None``, compact kernels use 1 and Gaussian uses
     4. ``max_neighbors`` limits work on each side of a point.
 
-    Set ``fast_gaussian=True`` to use Schraudolph's exponential approximation.
+    Set ``fast_gaussian=True`` to use Schraudolph's exponential approximation
+    :ref:`[Schraudolph 1999] <reference-schraudolph>`.
     ``memory="high"`` evaluates symmetric self-pairs once with per-thread
     buffers and caches external cutoff bounds. ``"low"`` avoids those buffers,
     while ``"auto"`` chooses based on problem size.
@@ -284,7 +286,9 @@ class BoundedKernelDensity(_Estimator):
     """One-dimensional KDE for data on the [0, 1] unit interval.
 
     ``method="reflected"`` works with every symmetric standard kernel.
-    ``method="beta"`` uses the boundary-aware Beta kernel.
+    It uses the reflection construction for support constraints
+    :ref:`[Schuster 1985] <reference-schuster>`. ``method="beta"`` uses the
+    sample-centered Beta kernel.
 
     Parameters
     ----------
