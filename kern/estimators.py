@@ -207,6 +207,18 @@ class ApproximateKernelDensity(_Estimator):
         per-thread buffers and caches external cutoff bounds. ``"low"`` avoids
         those buffers. ``"auto"`` chooses based on problem size and cutoff
         density.
+
+    Examples
+    --------
+    Limit the Gaussian kernel to nearby samples:
+
+    >>> model = ApproximateKernelDensity(
+    ...     bandwidth=0.2, cutoff=3.0, max_neighbors=2
+    ... ).fit([0.0, 0.1, 0.4, 0.9, 1.0])
+    >>> model.evaluate([0.2, 0.8]).shape
+    (2,)
+    >>> model.self_density().shape
+    (5,)
     """
     _parameter_names = (
         "bandwidth", "kernel", "cutoff", "max_neighbors", "fast_gaussian",
@@ -283,6 +295,24 @@ class BoundedKernelDensity(_Estimator):
     method : {"reflected", "beta"}, default="reflected"
         Boundary correction method. ``"reflected"`` works with every symmetric
         standard kernel. ``"beta"`` uses the boundary-aware Beta kernel.
+
+    Examples
+    --------
+    Fit a reflected KDE on samples inside the unit interval:
+
+    >>> model = BoundedKernelDensity(bandwidth=0.1).fit(
+    ...     [0.05, 0.2, 0.6, 0.95]
+    ... )
+    >>> model.evaluate([0.0, 0.5, 1.0]).shape
+    (3,)
+
+    Use the boundary-aware Beta kernel instead:
+
+    >>> beta_model = BoundedKernelDensity(method="beta", bandwidth=0.05).fit(
+    ...     [0.1, 0.4, 0.8]
+    ... )
+    >>> beta_model.score_samples([0.2, 0.7]).shape
+    (2,)
     """
 
     _parameter_names = ("bandwidth", "kernel", "method")
@@ -352,6 +382,17 @@ class MultivariateKernelDensity(_Estimator):
     block_size : int, default=32
         Number of query rows that reuse each cached data block. Values from
         16 to 64 are usually useful.
+
+    Examples
+    --------
+    Fit a two-dimensional estimator and evaluate query rows:
+
+    >>> X = [[0.0, 0.0], [0.2, 0.1], [1.0, 0.9]]
+    >>> model = MultivariateKernelDensity(bandwidth=0.3).fit(X)
+    >>> model.evaluate([[0.1, 0.1], [0.8, 0.8]]).shape
+    (2,)
+    >>> model.n_features_in_
+    2
     """
 
     _parameter_names = ("bandwidth", "kernel", "block_size")
