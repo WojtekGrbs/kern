@@ -37,6 +37,12 @@ def _check_kernel(kernel):
         raise ValueError(f"kernel must be one of {KERNELS}")
 
 
+def _check_bounded_method(method):
+    if method not in (None, "reflected", "beta"):
+        raise ValueError("method must be None, 'reflected', or 'beta'")
+    return method
+
+
 def _check_bandwidth(bandwidth):
     bandwidth = float(bandwidth)
     if not np.isfinite(bandwidth) or bandwidth <= 0.0:
@@ -46,6 +52,14 @@ def _check_bandwidth(bandwidth):
 
 def _log_density(density):
     return np.log(np.maximum(density, 1e-300))
+
+
+def _bandwidth_log_density(density):
+    density = np.asarray(density, dtype=np.float64)
+    result = np.full(density.shape, -700.0, dtype=np.float64)
+    positive = density > 1e-300
+    result[positive] = np.log(density[positive])
+    return result
 
 
 def default_bandwidth_grid(X, size=64, minimum=None, maximum=None):
@@ -285,6 +299,7 @@ class ApproximateKernelDensity(_Estimator):
 class BoundedKernelDensity(_Estimator):
     """One-dimensional KDE for data on the [0, 1] unit interval.
 
+    ``method=None`` uses the regular unbounded kernel density estimator.
     ``method="reflected"`` works with every symmetric standard kernel.
     It uses the reflection construction for support constraints
     :ref:`[Schuster 1985] <reference-schuster>`. ``method="beta"`` uses the
@@ -295,10 +310,11 @@ class BoundedKernelDensity(_Estimator):
     bandwidth : float, default=0.1
         Kernel bandwidth.
     kernel : str, default="gaussian"
-        Kernel name used by the reflected method.
-    method : {"reflected", "beta"}, default="reflected"
-        Boundary correction method. ``"reflected"`` works with every symmetric
-        standard kernel. ``"beta"`` uses the boundary-aware Beta kernel.
+        Kernel name used by the reflected and regular methods.
+    method : {None, "reflected", "beta"}, default="reflected"
+        Boundary correction method. ``None`` uses the regular unbounded KDE.
+        ``"reflected"`` works with every symmetric standard kernel.
+        ``"beta"`` uses the boundary-aware Beta kernel.
 
     Examples
     --------
@@ -327,15 +343,15 @@ class BoundedKernelDensity(_Estimator):
         self.method = method
 
     def fit(self, X, y=None):
-        """Store samples after checking the [0, 1] domain."""
+        """Store samples after checking the selected domain."""
         del y
         self.bandwidth = _check_bandwidth(self.bandwidth)
-        if self.method not in ("reflected", "beta"):
-            raise ValueError("method must be 'reflected' or 'beta'")
-        if self.method == "reflected":
+        self.method = _check_bounded_method(self.method)
+        if self.method != "beta":
             _check_kernel(self.kernel)
         self.data_ = _one_dimensional(X)
-        if np.any((self.data_ < 0.0) | (self.data_ > 1.0)):
+        if self.method is not None and np.any(
+                (self.data_ < 0.0) | (self.data_ > 1.0)):
             raise ValueError("bounded KDE data must be inside [0, 1]")
         self.n_features_in_ = 1
         return self
@@ -344,6 +360,8 @@ class BoundedKernelDensity(_Estimator):
         """Return density values at X."""
         self._require_fitted()
         points = _one_dimensional(X)
+        if self.method is None:
+            return _fun.kde(self.data_, points, self.bandwidth, self.kernel)
         if np.any((points < 0.0) | (points > 1.0)):
             raise ValueError("bounded KDE evaluation points must be inside [0, 1]")
         if self.method == "beta":
@@ -355,6 +373,8 @@ class BoundedKernelDensity(_Estimator):
     def self_density(self):
         """Return leave-one-out density at each training sample."""
         self._require_fitted()
+        if self.method is None:
+            return _fun.kde_self(self.data_, self.bandwidth, self.kernel)
         if self.method == "beta":
             return _fun.kde_beta_self(self.data_, self.bandwidth)
         return _fun.kde_reflected_self(
@@ -454,12 +474,17 @@ class BandwidthSelector(_Estimator):
         Candidate positive bandwidths. When omitted, :func:`default_bandwidth_grid`
         creates a data-scaled logarithmic grid during :meth:`fit`.
     kernel : str, default="gaussian"
-        Kernel used for every bandwidth candidate.
+        Kernel used for every bandwidth candidate except Beta-kernel bounded
+        selection.
     cv : "loo" or int, default="loo"
         Leave-one-out or the number of folds.
     parallel : {"auto", "grid", "evaluation"}, default="auto"
         Parallelize bandwidth candidates or each individual LOO/k-fold
         evaluation.
+    bounded : bool, default=False
+        Whether to select bandwidths for :class:`BoundedKernelDensity`.
+    bounded_method : {None, "reflected", "beta"}, default="reflected"
+        Boundary correction method used when ``bounded=True``.
 
     Examples
     --------
@@ -478,14 +503,60 @@ class BandwidthSelector(_Estimator):
     ... )
     """
 
-    _parameter_names = ("grid", "kernel", "cv", "parallel")
+    _parameter_names = (
+        "grid", "kernel", "cv", "parallel", "bounded", "bounded_method"
+    )
 
     def __init__(self, grid=None, kernel="gaussian", cv="loo",
-                 parallel="auto"):
+                 parallel="auto", bounded=False, bounded_method="reflected"):
         self.grid = grid
         self.kernel = kernel
         self.cv = cv
         self.parallel = parallel
+        self.bounded = bounded
+        self.bounded_method = bounded_method
+
+    @staticmethod
+    def _bounded_density(data, points, bandwidth, kernel, method):
+        if method is None:
+            return _fun.kde(data, points, bandwidth, kernel)
+        if method == "beta":
+            return _fun.kde_beta_ext(data, points, bandwidth)
+        return _fun.kde_reflected_ext(data, points, bandwidth, kernel)
+
+    @staticmethod
+    def _bounded_self_density(data, bandwidth, kernel, method):
+        if method is None:
+            return _fun.kde_self(data, bandwidth, kernel)
+        if method == "beta":
+            return _fun.kde_beta_self(data, bandwidth)
+        return _fun.kde_reflected_self(data, bandwidth, kernel)
+
+    @classmethod
+    def _bounded_bandwidth_grid(cls, data, grid, kernel, k_folds, method):
+        scores = np.empty(grid.shape, dtype=np.float64)
+        for index, bandwidth in enumerate(grid):
+            if k_folds == 1:
+                scores[index] = float(
+                    _bandwidth_log_density(
+                        cls._bounded_self_density(
+                            data, bandwidth, kernel, method
+                        )
+                    ).mean()
+                )
+                continue
+
+            total_score = 0.0
+            for fold in range(k_folds):
+                start = fold * data.size // k_folds
+                end = (fold + 1) * data.size // k_folds
+                train = np.concatenate((data[:start], data[end:]))
+                density = cls._bounded_density(
+                    train, data[start:end], bandwidth, kernel, method
+                )
+                total_score += float(_bandwidth_log_density(density).sum())
+            scores[index] = total_score / data.size
+        return scores
 
     def fit(self, X, y=None):
         """Score the grid and fit the best exact one-dimensional estimator."""
@@ -498,7 +569,16 @@ class BandwidthSelector(_Estimator):
         if np.any(grid <= 0.0):
             raise ValueError("all grid bandwidths must be positive")
 
-        _check_kernel(self.kernel)
+        if not isinstance(self.bounded, (bool, np.bool_)):
+            raise ValueError("bounded must be a boolean")
+        bounded = bool(self.bounded)
+
+        bounded_method = _check_bounded_method(self.bounded_method)
+        if (not bounded) or bounded_method != "beta":
+            _check_kernel(self.kernel)
+        if bounded and bounded_method is not None and np.any(
+                (data < 0.0) | (data > 1.0)):
+            raise ValueError("bounded KDE data must be inside [0, 1]")
 
         if self.cv == "loo":
             k_folds = 1
@@ -509,19 +589,33 @@ class BandwidthSelector(_Estimator):
         if self.parallel not in ("auto", "grid", "evaluation"):
             raise ValueError("parallel must be 'auto', 'grid', or 'evaluation'")
 
-        self.scores_ = _fun.bandwidth_grid(
-            data, grid, self.kernel, k_folds, self.parallel
-        )
+        if bounded:
+            self.scores_ = self._bounded_bandwidth_grid(
+                data, grid, self.kernel, k_folds, bounded_method
+            )
+        else:
+            self.scores_ = _fun.bandwidth_grid(
+                data, grid, self.kernel, k_folds, self.parallel
+            )
         best_bandwidth_index = int(np.argmax(self.scores_))
 
         self.data_ = data
         self.grid_ = grid
         self.kernel_ = self.kernel
+        self.bounded_ = bounded
+        self.bounded_method_ = bounded_method
         self.best_score_ = float(self.scores_[best_bandwidth_index])
         self.best_bandwidth_ = float(grid[best_bandwidth_index])
-        self.best_estimator_ = KernelDensity(
-            bandwidth=self.best_bandwidth_, kernel=self.kernel_
-        ).fit(data)
+        if bounded:
+            self.best_estimator_ = BoundedKernelDensity(
+                bandwidth=self.best_bandwidth_,
+                kernel=self.kernel_,
+                method=self.bounded_method_,
+            ).fit(data)
+        else:
+            self.best_estimator_ = KernelDensity(
+                bandwidth=self.best_bandwidth_, kernel=self.kernel_
+            ).fit(data)
         self.n_features_in_ = 1
         return self
 

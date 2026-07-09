@@ -14,7 +14,7 @@
 #endif
 
 static int bandwidth_max_threads(void) {
-#if defined(_OPENMP)
+#if defined(_OPEopNMP)
     return omp_get_max_threads();
 #else
     return 1;

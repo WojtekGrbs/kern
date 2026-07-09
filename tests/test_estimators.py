@@ -12,6 +12,14 @@ from kern import (
 from kern import _fun
 
 
+def bandwidth_log_density(density):
+    density = np.asarray(density)
+    result = np.full(density.shape, -700.0, dtype=np.float64)
+    positive = density > 1e-300
+    result[positive] = np.log(density[positive])
+    return result
+
+
 def test_default_bandwidth_grid_properties_and_validation():
     grid = default_bandwidth_grid([0.0, 0.2, 0.8, 1.0], size=8)
     assert grid.shape == (8,)
@@ -127,6 +135,21 @@ def test_bounded_kernel_density_methods(method):
     assert model.score(points) == pytest.approx(model.score_samples(points).sum())
 
 
+def test_bounded_kernel_density_method_none_uses_regular_kde():
+    data = [-0.2, 0.3, 1.2]
+    points = [-0.5, 0.4, 1.5]
+    model = BoundedKernelDensity(
+        bandwidth=0.2, kernel="cosine", method=None
+    ).fit(data)
+
+    np.testing.assert_allclose(
+        model.evaluate(points), _fun.kde(data, points, 0.2, "cosine")
+    )
+    np.testing.assert_allclose(
+        model.self_density(), _fun.kde_self(data, 0.2, "cosine")
+    )
+
+
 def test_bounded_kernel_density_validation():
     with pytest.raises(ValueError, match="method must be"):
         BoundedKernelDensity(method="bad").fit([0.5])
@@ -189,6 +212,59 @@ def test_bandwidth_selector_matches_low_level_scores(cv, parallel):
     assert selector.score([0.0]) == selector.best_estimator_.score([0.0])
 
 
+@pytest.mark.parametrize("method", [None, "reflected", "beta"])
+def test_bandwidth_selector_bounded_methods(method):
+    data = [-0.2, 0.3, 1.2] if method is None else [0.05, 0.3, 0.8, 0.95]
+    grid = [0.1, 0.2, 0.4]
+    selector = BandwidthSelector(
+        grid=grid,
+        kernel="cosine",
+        bounded=True,
+        bounded_method=method,
+    ).fit(data)
+    expected = np.asarray([
+        bandwidth_log_density(
+            BoundedKernelDensity(
+                bandwidth=bandwidth, kernel="cosine", method=method
+            ).fit(data).self_density(),
+        ).mean()
+        for bandwidth in grid
+    ])
+
+    np.testing.assert_allclose(selector.scores_, expected)
+    assert selector.best_bandwidth_ == grid[int(np.argmax(expected))]
+    assert selector.best_score_ == pytest.approx(np.max(expected))
+    assert selector.bounded_ is True
+    assert selector.bounded_method_ == method
+    assert isinstance(selector.best_estimator_, BoundedKernelDensity)
+    assert selector.best_estimator_.method == method
+
+
+def test_bandwidth_selector_bounded_kfold_scores():
+    data = np.asarray([0.05, 0.3, 0.8, 0.95])
+    grid = [0.1, 0.2]
+    selector = BandwidthSelector(
+        grid=grid,
+        bounded=True,
+        bounded_method="reflected",
+        cv=2,
+    ).fit(data)
+    expected = []
+    for bandwidth in grid:
+        total_score = 0.0
+        for fold in range(2):
+            start = fold * data.size // 2
+            end = (fold + 1) * data.size // 2
+            train = np.concatenate((data[:start], data[end:]))
+            density = BoundedKernelDensity(
+                bandwidth=bandwidth, method="reflected"
+            ).fit(train).evaluate(data[start:end])
+            total_score += bandwidth_log_density(density).sum()
+        expected.append(total_score / data.size)
+
+    np.testing.assert_allclose(selector.scores_, expected)
+
+
 def test_bandwidth_selector_default_grid_and_validation():
     selector = BandwidthSelector().fit([-1.0, -0.2, 0.4, 1.0])
     assert selector.grid_.shape == (64,)
@@ -201,6 +277,12 @@ def test_bandwidth_selector_default_grid_and_validation():
         BandwidthSelector(cv=3).fit([0.0, 1.0])
     with pytest.raises(ValueError, match="parallel must be"):
         BandwidthSelector(parallel="bad").fit([0.0, 1.0])
+    with pytest.raises(ValueError, match="method must be"):
+        BandwidthSelector(bounded_method="bad").fit([0.0, 1.0])
+    with pytest.raises(ValueError, match="bounded must be"):
+        BandwidthSelector(bounded="yes").fit([0.0, 1.0])
+    with pytest.raises(ValueError, match=r"inside \[0, 1\]"):
+        BandwidthSelector(bounded=True).fit([-0.1, 0.5])
 
 
 @pytest.mark.parametrize(

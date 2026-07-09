@@ -29,6 +29,9 @@ sample-centered Beta kernel for samples on ``[0, 1]``. The reflected method
 uses the reflection construction for support constraints
 :ref:`[Schuster 1985] <reference-schuster>`.
 
+Set ``method=None`` to use the same regular unbounded estimator behavior
+through the bounded estimator class.
+
 Multivariate KDE
 ----------------
 
